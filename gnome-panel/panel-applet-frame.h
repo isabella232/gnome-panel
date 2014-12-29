@@ -42,7 +42,7 @@ typedef struct _PanelAppletFrameClass   PanelAppletFrameClass;
 typedef struct _PanelAppletFramePrivate PanelAppletFramePrivate;
 
 struct _PanelAppletFrameClass {
-        GtkEventBoxClass parent_class;
+        GtkBoxClass parent_class;
 
 	void     (*init_properties)       (PanelAppletFrame    *frame);
 
@@ -67,7 +67,7 @@ struct _PanelAppletFrameClass {
 };
 
 struct _PanelAppletFrame {
-	GtkEventBox parent;
+	GtkBox parent;
 
         PanelAppletFramePrivate  *priv;
 };

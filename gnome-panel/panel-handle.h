@@ -68,4 +68,6 @@ GtkWidget *panel_handle_new             (PanelHandleType  type,
 void       panel_handle_set_orientation (PanelHandle     *handle,
                                          GtkOrientation   orientation);
 
+guint      panel_handle_get_size        (PanelHandle     *handle);
+
 #endif

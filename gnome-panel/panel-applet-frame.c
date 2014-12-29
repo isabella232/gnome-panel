@@ -43,7 +43,7 @@
 #include "panel-stock-icons.h"
 #include "xstuff.h"
 #include "panel-compatibility.h"
-
+#include "panel-handle.h"
 #include "panel-applet-frame.h"
 
 static void panel_applet_frame_activating_free (PanelAppletFrameActivating *frame_act);
@@ -65,11 +65,9 @@ struct _PanelAppletFrameActivating {
 
 /* PanelAppletFrame implementation */
 
-G_DEFINE_TYPE (PanelAppletFrame, panel_applet_frame, GTK_TYPE_EVENT_BOX)
+G_DEFINE_TYPE (PanelAppletFrame, panel_applet_frame, GTK_TYPE_BOX)
 
 #define PANEL_APPLET_FRAME_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), PANEL_TYPE_APPLET_FRAME, PanelAppletFramePrivate))
-
-#define HANDLE_SIZE 10
 
 struct _PanelAppletFramePrivate {
 	PanelWidget     *panel;
@@ -79,146 +77,9 @@ struct _PanelAppletFramePrivate {
 
 	gchar           *iid;
 
-	GtkAllocation    child_allocation;
-	GdkRectangle     handle_rect;
-
 	guint            has_handle : 1;
+	GtkWidget       *handle;
 };
-
-static gboolean
-panel_applet_frame_draw (GtkWidget *widget,
-                         cairo_t   *cr)
-{
-        PanelAppletFrame *frame = PANEL_APPLET_FRAME (widget);
-	GtkStyleContext *context;
-	GtkStateFlags     state;
-	cairo_pattern_t  *bg_pattern;
-	PanelBackground  *background;
-
-        if (GTK_WIDGET_CLASS (panel_applet_frame_parent_class)->draw)
-                GTK_WIDGET_CLASS (panel_applet_frame_parent_class)->draw (widget, cr);
-
-	if (!frame->priv->has_handle)
-		return FALSE;
-
-	context = gtk_widget_get_style_context (widget);
-	state = gtk_widget_get_state_flags (widget);
-	gtk_style_context_save (context);
-	gtk_style_context_set_state (context, state);
-
-	cairo_save (cr);
-
-	/* Set the pattern transform so as to correctly render a patterned
-	 * background with the handle */
-	gtk_style_context_get (context, state,
-			       "background-image", &bg_pattern,
-			       NULL);
-	background = &frame->priv->panel->background;
-
-	if (bg_pattern && (background->type == PANEL_BACK_IMAGE ||
-	    (background->type == PANEL_BACK_COLOR && background->has_alpha))) {
-		cairo_matrix_t ptm;
-
-		cairo_matrix_init_translate (&ptm,
-					     frame->priv->handle_rect.x,
-					     frame->priv->handle_rect.y);
-		cairo_matrix_scale (&ptm,
-				    frame->priv->handle_rect.width,
-				    frame->priv->handle_rect.height);
-		cairo_pattern_set_matrix (bg_pattern, &ptm);
-		cairo_pattern_destroy (bg_pattern);
-	}
-
-	gtk_render_handle (context, cr,
-			   frame->priv->handle_rect.x,
-			   frame->priv->handle_rect.y,
-			   frame->priv->handle_rect.width,
-			   frame->priv->handle_rect.height);
-
-	cairo_restore (cr);
-
-	gtk_style_context_restore (context);
-
-        return FALSE;
-}
-
-static void
-panel_applet_frame_get_preferred_width(GtkWidget *widget, gint *minimal_width, gint *natural_width)
-{
-	PanelAppletFrame *frame;
-	GtkBin           *bin;
-	GtkWidget        *child;
-	guint             border_width;
-
-	frame = PANEL_APPLET_FRAME (widget);
-	bin = GTK_BIN (widget);
-
-	if (!frame->priv->has_handle) {
-		GTK_WIDGET_CLASS (panel_applet_frame_parent_class)->get_preferred_width (widget, minimal_width, natural_width);
-		return;
-	}
-
-	child = gtk_bin_get_child (bin);
-	if (child && gtk_widget_get_visible (child))
-		gtk_widget_get_preferred_width (child, minimal_width, natural_width);
-
-	border_width = gtk_container_get_border_width (GTK_CONTAINER (widget));
-	*minimal_width += border_width;
-	*natural_width += border_width;
-
-	switch (frame->priv->orientation) {
-	case PANEL_ORIENTATION_TOP:
-	case PANEL_ORIENTATION_BOTTOM:
-		*minimal_width += HANDLE_SIZE;
-		*natural_width += HANDLE_SIZE;
-		break;
-	case PANEL_ORIENTATION_LEFT:
-	case PANEL_ORIENTATION_RIGHT:
-		break;
-	default:
-		g_assert_not_reached ();
-		break;
-	}
-}
-
-static void
-panel_applet_frame_get_preferred_height(GtkWidget *widget, gint *minimal_height, gint *natural_height)
-{
-	PanelAppletFrame *frame;
-	GtkBin           *bin;
-	GtkWidget        *child;
-	guint             border_width;
-
-	frame = PANEL_APPLET_FRAME (widget);
-	bin = GTK_BIN (widget);
-
-	if (!frame->priv->has_handle) {
-		GTK_WIDGET_CLASS (panel_applet_frame_parent_class)->get_preferred_height (widget, minimal_height, natural_height);
-		return;
-	}
-
-	child = gtk_bin_get_child (bin);
-	if (child && gtk_widget_get_visible (child))
-		gtk_widget_get_preferred_height (child, minimal_height, natural_height);
-
-	border_width = gtk_container_get_border_width (GTK_CONTAINER (widget));
-	*minimal_height += border_width;
-	*natural_height += border_width;
-
-	switch (frame->priv->orientation) {
-	case PANEL_ORIENTATION_LEFT:
-	case PANEL_ORIENTATION_RIGHT:
-		*minimal_height += HANDLE_SIZE;
-		*natural_height += HANDLE_SIZE;
-		break;
-	case PANEL_ORIENTATION_TOP:
-	case PANEL_ORIENTATION_BOTTOM:
-		break;
-	default:
-		g_assert_not_reached ();
-		break;
-	}
-}
 
 static void
 change_background (PanelAppletFrame *frame,
@@ -244,95 +105,15 @@ panel_applet_frame_size_allocate (GtkWidget     *widget,
 				  GtkAllocation *allocation)
 {
 	PanelAppletFrame *frame;
-	GtkBin           *bin;
-	GtkWidget        *child;
-	GdkWindow        *window;
-	GtkAllocation     new_allocation;
 	GtkAllocation     widget_allocation;
 
 	frame = PANEL_APPLET_FRAME (widget);
-	bin = GTK_BIN (widget);
 
 	gtk_widget_get_allocation (widget, &widget_allocation);
 
-	if (!frame->priv->has_handle) {
-		GTK_WIDGET_CLASS (panel_applet_frame_parent_class)->size_allocate (widget,
-										   allocation);
-		change_background (frame, &widget_allocation, allocation);
-		return;
-	}
-
-	gtk_widget_set_allocation (widget, allocation);
+	GTK_WIDGET_CLASS (panel_applet_frame_parent_class)->size_allocate (widget,
+	                                                                   allocation);
 	change_background (frame, &widget_allocation, allocation);
-
-	frame->priv->handle_rect.x = 0;
-	frame->priv->handle_rect.y = 0;
-
-	switch (frame->priv->orientation) {
-	case PANEL_ORIENTATION_TOP:
-	case PANEL_ORIENTATION_BOTTOM:
-		frame->priv->handle_rect.width  = HANDLE_SIZE;
-		frame->priv->handle_rect.height = allocation->height;
-
-		if (gtk_widget_get_direction (GTK_WIDGET (frame)) !=
-		    GTK_TEXT_DIR_RTL) {
-			frame->priv->handle_rect.x = 0;
-			new_allocation.x = HANDLE_SIZE;
-		} else {
-			frame->priv->handle_rect.x = allocation->width - HANDLE_SIZE;
-			new_allocation.x = 0;
-		}
-
-		new_allocation.y      = 0;
-		new_allocation.width  = allocation->width - HANDLE_SIZE;
-		new_allocation.height = allocation->height;
-		break;
-	case PANEL_ORIENTATION_LEFT:
-	case PANEL_ORIENTATION_RIGHT:
-		frame->priv->handle_rect.width  = allocation->width;
-		frame->priv->handle_rect.height = HANDLE_SIZE;
-
-		new_allocation.x      = 0;
-		new_allocation.y      = HANDLE_SIZE;
-		new_allocation.width  = allocation->width;
-		new_allocation.height = allocation->height - HANDLE_SIZE;
-		break;
-	default:
-		g_assert_not_reached ();
-		break;
-	}
-
-	new_allocation.width  = MAX (1, new_allocation.width);
-	new_allocation.height = MAX (1, new_allocation.height);
-
-	window = gtk_widget_get_window (widget);
-
-	/* If the child allocation changed, that means that the frame is drawn
-	 * in a new place, so we must redraw the entire widget.
-	 */
-	if (gtk_widget_get_mapped (widget) &&
-	    (new_allocation.x != frame->priv->child_allocation.x ||
-	     new_allocation.y != frame->priv->child_allocation.y ||
-	     new_allocation.width != frame->priv->child_allocation.width ||
-	     new_allocation.height != frame->priv->child_allocation.height))
-		gdk_window_invalidate_rect (window, &widget_allocation, FALSE);
-
-	if (gtk_widget_get_realized (widget)) {
-		guint border_width;
-
-		border_width = gtk_container_get_border_width (GTK_CONTAINER (widget));
-		gdk_window_move_resize (window,
-			allocation->x + border_width,
-			allocation->y + border_width,
-			MAX (allocation->width - border_width * 2, 0),
-			MAX (allocation->height - border_width * 2, 0));
-	}
-
-	child = gtk_bin_get_child (bin);
-	if (child && gtk_widget_get_visible (child))
-		gtk_widget_size_allocate (child, &new_allocation);
-  
-	frame->priv->child_allocation = new_allocation;
 }
 
 static inline gboolean
@@ -364,7 +145,7 @@ panel_applet_frame_button_changed (GtkWidget      *widget,
 	if (!frame->priv->has_handle)
 		return handled;
 
-	if (event->window != gtk_widget_get_window (widget))
+	if (event->window != gtk_widget_get_window (frame->priv->handle))
 		return FALSE;
 
 	modifiers = event->state & gtk_accelerator_get_default_mod_mask ();
@@ -372,7 +153,6 @@ panel_applet_frame_button_changed (GtkWidget      *widget,
 	switch (event->button) {
 	case 1:
 	case 2:
-		if (button_event_in_rect (event, &frame->priv->handle_rect)) {
 			if ((event->type == GDK_BUTTON_PRESS ||
 			     event->type == GDK_2BUTTON_PRESS) &&
 			    modifiers == panel_bindings_get_mouse_button_modifier_keymask ()){
@@ -384,7 +164,6 @@ panel_applet_frame_button_changed (GtkWidget      *widget,
 				panel_widget_applet_drag_end (frame->priv->panel);
 				handled = TRUE;
 			}
-		}
 		break;
 	case 3:
 		if (event->type == GDK_BUTTON_PRESS ||
@@ -435,12 +214,7 @@ panel_applet_frame_class_init (PanelAppletFrameClass *klass)
 
 	gobject_class->finalize = panel_applet_frame_finalize;
 
-	widget_class->draw                 = panel_applet_frame_draw;
-	widget_class->get_preferred_width  = panel_applet_frame_get_preferred_width;
-	widget_class->get_preferred_height = panel_applet_frame_get_preferred_height;
 	widget_class->size_allocate        = panel_applet_frame_size_allocate;
-	widget_class->button_press_event   = panel_applet_frame_button_changed;
-	widget_class->button_release_event = panel_applet_frame_button_changed;
 
 	g_type_class_add_private (klass, sizeof (PanelAppletFramePrivate));
 }
@@ -448,8 +222,6 @@ panel_applet_frame_class_init (PanelAppletFrameClass *klass)
 static void
 panel_applet_frame_init (PanelAppletFrame *frame)
 {
-	GtkStyleContext *context;
-
 	frame->priv = PANEL_APPLET_FRAME_GET_PRIVATE (frame);
 
 	frame->priv->panel       = NULL;
@@ -457,8 +229,23 @@ panel_applet_frame_init (PanelAppletFrame *frame)
 	frame->priv->applet_info = NULL;
 	frame->priv->has_handle  = FALSE;
 
-	context = gtk_widget_get_style_context (GTK_WIDGET (frame));
-	gtk_style_context_add_class (context, GTK_STYLE_CLASS_HORIZONTAL);
+	frame->priv->handle = panel_handle_new (PANEL_HANDLE_APPLET,
+	                                        GTK_ORIENTATION_HORIZONTAL);
+
+	gtk_box_pack_start (GTK_BOX (frame),
+	                    frame->priv->handle,
+	                    FALSE,
+	                    FALSE,
+	                    0);
+
+	g_signal_connect_swapped (frame->priv->handle,
+	                          "button-press-event",
+	                          G_CALLBACK (panel_applet_frame_button_changed),
+	                          frame);
+	g_signal_connect_swapped (frame->priv->handle,
+	                          "button-release-event",
+	                          G_CALLBACK (panel_applet_frame_button_changed),
+	                          frame);
 }
 
 static void
@@ -487,20 +274,21 @@ void
 panel_applet_frame_change_orientation (PanelAppletFrame *frame,
 				       PanelOrientation  orientation)
 {
-	GtkStyleContext *context;
-
 	if (orientation == frame->priv->orientation)
 		return;
 
 	frame->priv->orientation = orientation;
 
-	context = gtk_widget_get_style_context (GTK_WIDGET (frame));
 	if (orientation & PANEL_HORIZONTAL_MASK) {
-		gtk_style_context_add_class (context, GTK_STYLE_CLASS_HORIZONTAL);
-		gtk_style_context_remove_class (context, GTK_STYLE_CLASS_VERTICAL);
+		gtk_orientable_set_orientation (GTK_ORIENTABLE (frame),
+		                                GTK_ORIENTATION_HORIZONTAL);
+		panel_handle_set_orientation (PANEL_HANDLE (frame->priv->handle),
+		                              GTK_ORIENTATION_HORIZONTAL);
 	} else {
-		gtk_style_context_add_class (context, GTK_STYLE_CLASS_VERTICAL);
-		gtk_style_context_remove_class (context, GTK_STYLE_CLASS_HORIZONTAL);
+		gtk_orientable_set_orientation (GTK_ORIENTABLE (frame),
+		                                GTK_ORIENTATION_VERTICAL);
+		panel_handle_set_orientation (PANEL_HANDLE (frame->priv->handle),
+		                              GTK_ORIENTATION_VERTICAL);
 	}
 	gtk_widget_reset_style (GTK_WIDGET (frame));
 
@@ -585,6 +373,12 @@ _panel_applet_frame_update_flags (PanelAppletFrame *frame,
 		frame->priv->panel, GTK_WIDGET (frame), major, minor);
 
 	frame->priv->has_handle = has_handle;
+
+	if (has_handle) {
+		gtk_widget_show (frame->priv->handle);
+	} else {
+		gtk_widget_hide (frame->priv->handle);
+	}
 }
 
 void
@@ -593,8 +387,12 @@ _panel_applet_frame_update_size_hints (PanelAppletFrame *frame,
 				       guint             n_elements)
 {
 	if (frame->priv->has_handle) {
-		gint extra_size = HANDLE_SIZE + 1;
-		gint i;
+		PanelHandle *handle;
+		gint         extra_size;
+		gint         i;
+
+		handle = PANEL_HANDLE (frame->priv->handle);
+		extra_size = panel_handle_get_size (handle) + 1;
 
 		for (i = 0; i < n_elements; i++)
 			size_hints[i] += extra_size;
@@ -620,24 +418,6 @@ _panel_applet_frame_get_background_string (PanelAppletFrame    *frame,
 
 	x = allocation.x;
 	y = allocation.y;
-
-	if (frame->priv->has_handle) {
-		switch (frame->priv->orientation) {
-		case PANEL_ORIENTATION_TOP:
-		case PANEL_ORIENTATION_BOTTOM:
-			if (gtk_widget_get_direction (GTK_WIDGET (frame)) !=
-			    GTK_TEXT_DIR_RTL)
-				x += frame->priv->handle_rect.width;
-			break;
-		case PANEL_ORIENTATION_LEFT:
-		case PANEL_ORIENTATION_RIGHT:
-			y += frame->priv->handle_rect.height;
-			break;
-		default:
-			g_assert_not_reached ();
-			break;
-		}
-	}
 
 	return panel_background_make_string (&panel->background, x, y);
 }

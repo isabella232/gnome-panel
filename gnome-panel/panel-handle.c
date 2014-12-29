@@ -318,3 +318,9 @@ panel_handle_set_orientation (PanelHandle    *handle,
 		gtk_style_context_remove_class (context, GTK_STYLE_CLASS_HORIZONTAL);
 	}
 }
+
+guint
+panel_handle_get_size (PanelHandle *handle)
+{
+	return handle->priv->size;
+}
