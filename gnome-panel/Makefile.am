@@ -37,6 +37,8 @@ panel_sources =			\
 	panel-applets-manager.c	\
 	panel-background.c	\
 	panel-background-monitor.c	\
+	panel-handle.c \
+	panel-handle.h \
 	panel-stock-icons.c	\
 	panel-action-button.c	\
 	panel-image-menu-item.c \
@@ -171,6 +173,7 @@ panel_test_applets_LDFLAGS = -export-dynamic
 panel_enum_headers =						\
 	$(top_srcdir)/gnome-panel/panel-enums.h			\
 	$(top_srcdir)/gnome-panel/panel-enums-gsettings.h	\
+	$(top_srcdir)/gnome-panel/panel-handle.h \
 	$(top_srcdir)/gnome-panel/panel-types.h
 
 panel-marshal.h: panel-marshal.list $(GLIB_GENMARSHAL)
